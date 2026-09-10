@@ -210,7 +210,8 @@ def build_experiment_bundle(config_path: Path) -> Path:
         batch = work["batch"]
         sequence = work["sequence_length"]
         network_ids = {op["op_id"] for op in network["operators"]}
-        kv_homes = {raw["layer_index"]: default[raw["op_id"]]
+        kv_homes = {(raw["layer_index"], raw["canonical_op_slot"].rsplit("_s", 1)[1]
+                     if "_s" in raw["canonical_op_slot"] else "0"): default[raw["op_id"]]
                     for raw in network["operators"] if raw["op_role"] == "KV_WRITE"}
         node_specs = []
         for raw in network["operators"]:
@@ -252,7 +253,9 @@ def build_experiment_bundle(config_path: Path) -> Path:
                 "operator_family": family, "placement_supernode": supernode,
                 "parallel_group_hint": (f"{phase}:{network_index}:L{layer}:experts" if expert else None),
                 "weight_home": "CPU0" if node.weight_size else None,
-                "kv_home": (kv_homes[layer] if raw["canonical_op_slot"]
+                "kv_home": (kv_homes[(layer, raw["canonical_op_slot"].rsplit("_s", 1)[1]
+                            if "_s" in raw["canonical_op_slot"] else "0")]
+                            if raw["canonical_op_slot"].split("_s", 1)[0]
                             in {"k", "v", "qk", "sv", "k_write", "v_write"} else None),
                 "expert_id": expert,
                 "expert_service_buckets": luts[phase][family] if expert else [],

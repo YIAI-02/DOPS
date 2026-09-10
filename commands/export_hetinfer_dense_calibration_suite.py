@@ -54,7 +54,7 @@ def main():
         "hetinfer_tensor_bindings_out": str(output / "native" / "tensor_bindings.json"),
         "npu_backend": "fast", "pim_fast_mode": True,
         "npu_lut_strict": False, "pim_trace_strict": False,
-        "scheduler_seed": 7, "tp_qkv": 1, "tp_ffn": 1,
+        "scheduler_seed": 7, "tp_qkv": 2, "tp_ffn": 2,
         "weight_source": "host", "weight_format": "ND",
         "weight_load_compute_overlap_ratio": 1.0,
         "pim_weight_load_overlap_ratio": 0.5,

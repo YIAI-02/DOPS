@@ -35,9 +35,9 @@ The current Dense export command always selects both fast backends and Bifocal C
 - Historical output/dense_calibration_suite remains separate. The older full-suite and Tiny-MoE exporters retain their explicitly selected legacy backends; they are not the default Dense workflow.
 
 C026 is shared across all three models: joint lookahead enabled, H=2, gamma=0.4, consistency lambda=0.5, plan hint max=3, weight bias eta=0.5, decode amort enabled with alpha=1, rmin=1, reuse probability=1.
-The Dense command also sets scheduler seed=7, TP QKV/FFN=1/1, host/ND weights, load/compute overlap=1, PIM weight overlap=0.5, and decode sample/refresh stride=2/2.
+The Dense command also sets scheduler seed=7, TP QKV/FFN=2/2, host/ND weights, load/compute overlap=1, PIM weight overlap=0.5, and decode sample/refresh stride=2/2.
 The source is the completed 192-case C026 scan from task 01a0862a-602b-7692-b531-fa917deda41c; these are analytical timing results, not hardware measurements.
-The Dense graph retains TP=1 from the existing Het-Infer experiment. The scan used TP=2, so its analytical gains are not claimed for this configuration. Sharded KV and collective support are outside this change.
+The Dense graph uses TP=2 to match the scan. KV homes are exported per layer and TP shard. Het-Infer consumes the fixed collective staging destinations and resource sets without adding the collective internal transfer twice, and reuses the declared output copies. Scan gains are not a substitute for validating the current Het-Infer workflow.
 Bifocal consistency lambda is independent of Het-Infer CAMC lambda.
 
 ## ✨ Overview
