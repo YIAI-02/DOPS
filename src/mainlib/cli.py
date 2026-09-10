@@ -59,7 +59,7 @@ def parse_args():
         type=str,
         default=None,
         choices=['fast', 'fast_mode', 'lut', 'ascend_310b_json', 'llmcompass'],
-        help='NPU operator-latency backend: fast/lut/llmcompass. Must be explicitly specified in config JSON or CLI.',
+        help='NPU operator-latency backend: fast/lut/llmcompass. Defaults to fast when omitted; explicit config or CLI values take precedence.',
     )
     sp_eval.add_argument('--pim_fast_mode', action=argparse.BooleanOptionalAction, default=None)
     sp_eval.add_argument(
@@ -121,7 +121,7 @@ def parse_args():
         type=str,
         default=None,
         choices=['fast', 'fast_mode', 'lut', 'ascend_310b_json', 'llmcompass'],
-        help='NPU operator-latency backend: fast/lut/llmcompass. Must be explicitly specified in config JSON or CLI.',
+        help='NPU operator-latency backend: fast/lut/llmcompass. Defaults to fast when omitted; explicit config or CLI values take precedence.',
     )
     sp_ws.add_argument('--pim_fast_mode', action=argparse.BooleanOptionalAction, default=None)
     sp_ws.add_argument(

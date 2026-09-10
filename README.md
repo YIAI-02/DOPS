@@ -22,6 +22,24 @@ DOPS is a simulation and analysis framework for studying decoder-only LLM infere
 
 ---
 
+## Het-Infer fast defaults (2026-09-10)
+
+The evaluate CLI defaults to the analytical NPU fast backend when no backend is specified. PIM fast mode follows this default unless explicitly overridden.
+The current Dense export command always selects both fast backends and Bifocal C026; it does not use AIM executables or NPU LUTs.
+
+- HPC checkout: /lustre/home/2501111916/workspace/Het-Infer/dops-camc-work
+- Branch: integration/hetinfer-prior-camc-v1
+- Export: sbatch commands/run_dense_calibration_export.slurm --case W1 (Qwen 1.8B), W5 (7B), or W8 (14B).
+- Output: output/dense_fast_c026/CASE/bundle; config.json in the parent directory records all run settings.
+- W1–W7 preserve the previous workload shapes; W8 adds Qwen 14B with 40 layers, B1/P16/H32.
+- Historical output/dense_calibration_suite remains separate. The older full-suite and Tiny-MoE exporters retain their explicitly selected legacy backends; they are not the default Dense workflow.
+
+C026 is shared across all three models: joint lookahead enabled, H=2, gamma=0.4, consistency lambda=0.5, plan hint max=3, weight bias eta=0.5, decode amort enabled with alpha=1, rmin=1, reuse probability=1.
+The Dense command also sets scheduler seed=7, TP QKV/FFN=1/1, host/ND weights, load/compute overlap=1, PIM weight overlap=0.5, and decode sample/refresh stride=2/2.
+The source is the completed 192-case C026 scan from task 01a0862a-602b-7692-b531-fa917deda41c; these are analytical timing results, not hardware measurements.
+The Dense graph retains TP=1 from the existing Het-Infer experiment. The scan used TP=2, so its analytical gains are not claimed for this configuration. Sharded KV and collective support are outside this change.
+Bifocal consistency lambda is independent of Het-Infer CAMC lambda.
+
 ## ✨ Overview
 
 DOPS is built around a closed loop with three inputs:

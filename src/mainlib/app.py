@@ -99,13 +99,11 @@ def main():
         cfg = _resolve_cfg_paths(cfg, config_path=cfg.get('_config_path'))
         cfg['dtype'] = normalize_dtype_token(cfg.get('dtype', 'fp16'), default='fp16')
 
+        cfg['npu_backend'] = _normalize_npu_backend(cfg.get('npu_backend') or 'fast')
+
         runtime_cfg_overrides = _apply_runtime_config_overrides(cfg)
         if runtime_cfg_overrides:
             print(f"[runtime-config] applied {json.dumps(runtime_cfg_overrides, ensure_ascii=False, sort_keys=True)}")
-
-        if cfg.get('npu_backend', None) is None:
-            raise ValueError("Missing required config key: 'npu_backend'. Choose from: fast, ascend_310b_lut, ascend_310b_json, llmcompass")
-        cfg['npu_backend'] = _normalize_npu_backend(cfg.get('npu_backend'))
 
         if args.mode == 'weight-suggest':
             _ensure_weight_suggest_supported(cfg)

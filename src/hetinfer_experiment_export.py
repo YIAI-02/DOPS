@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import sys
 
+import config as runtime_config
+from mainlib.cli import _apply_runtime_config_overrides
 from cost_model import CostModel
 from hardware import demo_cluster
 from model_parser import build_graph
@@ -96,16 +98,20 @@ def _order(operators: list[dict]) -> list[str]:
 def _experiment_cost(cfg):
     graph, shape = build_graph(cfg)
     cluster = demo_cluster(cfg)
-    cost = CostModel(cluster, dtype="fp16", npu_backend="ascend_310b_lut", npu_lut_strict=True,
+    _apply_runtime_config_overrides(cfg)
+    pim_fast = bool(cfg.get("pim_fast_mode", True))
+    cost = CostModel(cluster, dtype=cfg.get("dtype", "fp16"),
+                     npu_backend=cfg.get("npu_backend", "fast"),
+                     npu_lut_strict=bool(cfg.get("npu_lut_strict", False)),
                      pim_config_path=Path(cfg["pim_config_path"]),
                      ramulator_config_path=Path(cfg["ramulator_config_path"]),
-                     pim_trace_strict=True, pim_fast_mode=False,
-                     pim_ramulator_timeout_s=1800)
-    # Reuse one backing tensor set; trace length, batch, and phase stay exact.
-    maximum = int(cfg["batch"]) * int(cfg["prefill_len"])
-    cost.set_model_dict(cost.get_or_make_pim_model_dict(
-        dim=shape.dim, n_heads=shape.n_heads, n_kv_heads=shape.n_kv_heads,
-        ffn_dim=shape.ffn_dim, seqlen=max(maximum, cfg["max_seq_len"])))
+                     pim_trace_strict=bool(cfg.get("pim_trace_strict", False)),
+                     pim_fast_mode=pim_fast, pim_ramulator_timeout_s=1800)
+    if not pim_fast:
+        maximum = int(cfg["batch"]) * int(cfg["prefill_len"])
+        cost.set_model_dict(cost.get_or_make_pim_model_dict(
+            dim=shape.dim, n_heads=shape.n_heads, n_kv_heads=shape.n_kv_heads,
+            ffn_dim=shape.ffn_dim, seqlen=max(maximum, cfg["max_seq_len"])))
     return graph, shape, cluster, cost
 
 
@@ -159,9 +165,10 @@ def _parallel_expert_lut(config_path, phase, maximum, output):
 
 
 def build_experiment_bundle(config_path: Path) -> Path:
-    if os.environ.get("PIM_TRACE_SCALE_REPEATS") != "0":
-        raise RuntimeError("Set PIM_TRACE_SCALE_REPEATS=0 before importing DOPS")
     cfg = json.loads(config_path.read_text())
+    fast_mode = cfg.get("npu_backend", "fast") == "fast" and cfg.get("pim_fast_mode", True)
+    if not fast_mode and os.environ.get("PIM_TRACE_SCALE_REPEATS") != "0":
+        raise RuntimeError("Set PIM_TRACE_SCALE_REPEATS=0 before importing DOPS")
     output = config_path.parent
     graph, shape, cluster, cost = _experiment_cost(cfg)
     maximum = int(cfg["batch"]) * int(cfg["prefill_len"])
@@ -218,7 +225,7 @@ def build_experiment_bundle(config_path: Path) -> Path:
             layer = raw["layer_index"]
             supernode = f"{phase}:{network_index}:L{layer}:expert:{expert}" if expert else op_id
             metadata[op_id] = {"family": family,
-                               "timing_source": node.attrs.get("timing_source", "npu_lut_or_aim"),
+                               "timing_source": node.attrs.get("timing_source", "dops_fast" if fast_mode else "npu_lut_or_aim"),
                                "weight_id": node.weight_id}
             if node.weight_size:
                 wid = str(node.weight_id)
@@ -332,7 +339,19 @@ def build_experiment_bundle(config_path: Path) -> Path:
         "weight_capacity_bytes": {device: int(cluster.devices[device].mem_capacity_GB
                                              * 1024 ** 3 * 0.95) for device in DEVICES},
         "hardware_json": cfg["hardware_json"],
-        "pim_trace_scale_repeats": 0, "moe_control_timing": cfg.get("moe_control_timing"),
+        "timing_mode": "fast" if fast_mode else "aim_lut",
+        "npu_backend": cfg.get("npu_backend", "fast"),
+        "pim_fast_mode": cfg.get("pim_fast_mode", True),
+        "bifocal_preset": cfg.get("bifocal_preset"),
+        "bifocal_parameters": {name: getattr(runtime_config, name) for name in (
+            "SCHED_JOINT_LK_ENABLE", "SCHED_JOINT_LK_H", "SCHED_JOINT_LK_GAMMA",
+            "SCHED_JOINT_LK_CONSIST_LAMBDA", "SCHED_JOINT_LK_PLAN_HINT_MAX",
+            "SCHED_WEIGHT_BIAS_ETA", "SCHED_DECODE_AMORT_ENABLE",
+            "SCHED_DECODE_AMORT_ALPHA", "SCHED_DECODE_AMORT_RMIN",
+            "SCHED_DECODE_AMORT_REUSE_PROB")},
+        "scheduler_seed": cfg.get("scheduler_seed"),
+        "pim_trace_scale_repeats": None if fast_mode else 0,
+        "moe_control_timing": cfg.get("moe_control_timing"),
         "default_placement_projection": projections,
         "produced_tensor": False, "produced_token": False})
     print(f"BUNDLE_OK {bundle}", flush=True)

@@ -172,12 +172,12 @@ SCHED_DEFAULT: str = "HEFT"
 # Used by JointGraphScheduler.schedule_joint() to reduce multi-hop communication thrashing
 # in large unrolled decode graphs.
 SCHED_JOINT_LK_ENABLE: bool = True
-SCHED_JOINT_LK_H: int = 3
-SCHED_JOINT_LK_GAMMA: float = 0.0
-SCHED_JOINT_LK_CONSIST_LAMBDA: float = 0
+SCHED_JOINT_LK_H: int = 2
+SCHED_JOINT_LK_GAMMA: float = 0.4
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 0.5
 SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
 # Weight-reuse bias gain multiplier (eta in bias formula)
-SCHED_WEIGHT_BIAS_ETA: float = 0.1
+SCHED_WEIGHT_BIAS_ETA: float = 0.5
 #AMORT
 SCHED_DECODE_AMORT_ENABLE = True
 SCHED_DECODE_AMORT_ALPHA = 1
