@@ -1,40 +1,56 @@
-"""Build Tiny-MoE experiment bundles from native DOPS exports and exact costs."""
-
+"""Build the single fast-mode Het-Infer input from completed DOPS snapshots."""
 from __future__ import annotations
 
-import argparse
-from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
 from copy import deepcopy
+import heapq
 import json
-import os
 from pathlib import Path
+import re
 from types import SimpleNamespace
-import shutil
-import subprocess
-import sys
 
 import config as runtime_config
-from mainlib.cli import _apply_runtime_config_overrides
-from cost_model import CostModel
-from hardware import demo_cluster
-from model_parser import build_graph
 from plan_label import PlanLabel
-from scheduler.scheduler_base import SchedulerBase
-from hetinfer_camc_profile_export import build_expert_service_lut, export_camc_bundle
-from hetinfer_prior import validate_prior_artifact
-from hetinfer_tensor_bindings_export import export_tensor_bindings_manifest_from_artifacts
+from hetinfer_capture import route_time_s
 
 NPU = "Ascend_910B_NPU0"
 DEVICES = (NPU, "PIM0", "PIM1")
+PARAMETERS = (
+    "SCHED_JOINT_LK_ENABLE", "SCHED_JOINT_LK_H", "SCHED_JOINT_LK_GAMMA",
+    "SCHED_JOINT_LK_CONSIST_LAMBDA", "SCHED_JOINT_LK_PLAN_HINT_MAX",
+    "SCHED_WEIGHT_BIAS_ETA", "SCHED_DECODE_AMORT_ENABLE",
+    "SCHED_DECODE_AMORT_ALPHA", "SCHED_DECODE_AMORT_RMIN",
+    "SCHED_DECODE_AMORT_REUSE_PROB",
+)
 
 
-def _write(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, allow_nan=False,
-                               separators=(",", ":")) + "\n")
+def _op_role(name, attrs):
+    if attrs.get("expert") is not None:
+        return "EXPERT"
+    token = re.sub(r"[^A-Z0-9]+", "_", str(attrs.get("op_role") or name).upper()).strip("_")
+    roles = {
+        "LN": "LAYERNORM", "LN1": "LAYERNORM", "LN2": "LAYERNORM",
+        "LAYERNORM": "LAYERNORM", "RMSNORM": "LAYERNORM",
+        "WQ": "Q_PROJ", "Q": "Q_PROJ", "Q_PROJ": "Q_PROJ",
+        "WK": "K_PROJ", "K": "K_PROJ", "K_PROJ": "K_PROJ",
+        "WV": "V_PROJ", "V": "V_PROJ", "V_PROJ": "V_PROJ",
+        "K_WRITE": "KV_WRITE", "V_WRITE": "KV_WRITE", "KV_WRITE": "KV_WRITE",
+        "QK": "QK", "SCORE": "QK", "SOFTMAX": "SOFTMAX", "SV": "SV",
+        "WO": "O_PROJ", "O": "O_PROJ", "O_PROJ": "O_PROJ",
+        "FFN_W1": "FFN_UP", "FFN_W3": "FFN_UP", "FFN_UP": "FFN_UP",
+        "FFN_GATE": "FFN_UP", "SWIGLU": "ACTIVATION", "SILU": "ACTIVATION",
+        "GELU": "ACTIVATION", "ACTIVATION": "ACTIVATION",
+        "FFN_W2": "FFN_DOWN", "FFN_DOWN": "FFN_DOWN",
+        "MOE_ROUTER": "ROUTER", "ROUTER": "ROUTER",
+        "MOE_COMBINE": "COMBINE", "COMBINE": "COMBINE",
+        "ALLREDUCE": "COLLECTIVE", "ALL_REDUCE": "COLLECTIVE",
+        "REDUCE": "COLLECTIVE", "GATHER": "COLLECTIVE", "SCATTER": "COLLECTIVE",
+        "TRANSFER": "COPY", "COPY": "COPY",
+    }
+    return "EXPERT" if "EXPERT" in token else roles.get(token, "OTHER")
 
 
-def _service(cost: CostModel, node, device, batch: int, sequence: int, phase: str) -> float:
+def _service(cost, node, device, batch, sequence, phase):
     label = PlanLabel(kv_in_pim=True, kv_place="pim")
     if node.weight_size:
         return float(cost.weighted_compute_stage(
@@ -43,352 +59,206 @@ def _service(cost: CostModel, node, device, batch: int, sequence: int, phase: st
     return float(cost.node_device_cost(node, device, label, batch, sequence, phase))
 
 
-def _expert_lut(cost: CostModel, nodes: dict, phase: str, maximum: int,
-                output: Path, shard: int = 0, shards: int = 1) -> dict:
+def _expert_lut(cost, graph, phase, maximum):
+    families = {node.name.lower(): node for node in graph.nodes.values()
+                if node.attrs.get("expert_id") is not None}
     result = {}
-    anchor_counts = sorted({1, maximum, *(2 ** k for k in range(maximum.bit_length())
-                                         if 2 ** k <= maximum)})
-    for family, original in nodes.items():
+    for family, original in families.items():
         node = deepcopy(original)
         node.attrs["moe_token_fraction"] = 1.0
-        npu = {}
-        pim = {device: {} for device in DEVICES[1:]}
-        for n_e in range(1 + shard, maximum + 1, shards):
-            batch, sequence = (1, n_e) if phase == "prefill" else (n_e, 1)
-            if n_e in anchor_counts:
-                npu[n_e] = _service(cost, node, cost.cluster.devices[NPU], batch, sequence, phase)
-            for device in pim:
-                pim[device][n_e] = _service(cost, node, cost.cluster.devices[device],
-                                           batch, sequence, phase)
-            if (n_e - 1 - shard) % (64 * shards) == 0 or maximum - n_e < shards:
-                print(f"AIM_EXACT {phase} {family} n_e={n_e}/{maximum} shard={shard}/{shards}", flush=True)
-        if shards == 1:
-            result[family] = build_expert_service_lut(
-                max_tokens=maximum, activation_bytes_per_token=int(node.attrs["dim"]) * 2,
-                npu_anchors={NPU: npu}, pim_measurements=pim)
-        else:
-            result[family] = {"activation_bytes_per_token": int(node.attrs["dim"]) * 2,
-                              "npu": npu, "pim": pim}
-    _write(output, {"phase": phase, "max_tokens": maximum,
-                    "raw_measurements": shards > 1, "shard": shard, "shards": shards,
-                    "pim_trace_scale_repeats": 0,
-                    "expert_token_fraction": 1.0,
-                    "mapping": "prefill:(batch=1,seqlen=n_e); decode:(batch=n_e,seqlen=1)",
-                    "npu_anchor_counts": anchor_counts, "operators": result})
+        buckets = []
+        for count in range(1, maximum + 1):
+            batch, sequence = (1, count) if phase == "prefill" else (count, 1)
+            buckets.append({
+                "min_tokens": count, "max_tokens": count,
+                "activation_bytes": count * int(node.attrs["dim"]) * 2,
+                "service_time_s": {device: _service(cost, node, cost.cluster.devices[device],
+                                                    batch, sequence, phase) for device in DEVICES},
+                "timing_source": {device: "dops_fast" for device in DEVICES},
+            })
+        result[family] = buckets
     return result
 
 
-def _order(operators: list[dict]) -> list[str]:
+def _order(operators):
     by_id = {op["op_id"]: op for op in operators}
+    position = {op["op_id"]: index for index, op in enumerate(operators)}
     pending = {op_id: set(op["dependencies"]) for op_id, op in by_id.items()}
+    successors = defaultdict(list)
+    for op_id, dependencies in pending.items():
+        for dependency in dependencies:
+            successors[dependency].append(op_id)
+    ready = [(by_id[op_id]["operator_index"], position[op_id], op_id)
+             for op_id, dependencies in pending.items() if not dependencies]
+    heapq.heapify(ready)
     result = []
-    while pending:
-        ready = sorted((op_id for op_id, deps in pending.items() if not deps),
-                       key=lambda op_id: by_id[op_id]["operator_index"])
-        if not ready:
-            raise ValueError("Native DOPS graph is not a DAG")
-        for op_id in ready:
-            result.append(op_id)
-            del pending[op_id]
-        for deps in pending.values():
-            deps.difference_update(ready)
+    while ready:
+        _, _, op_id = heapq.heappop(ready)
+        result.append(op_id)
+        for consumer in successors[op_id]:
+            pending[consumer].remove(op_id)
+            if not pending[consumer]:
+                heapq.heappush(ready, (by_id[consumer]["operator_index"], position[consumer], consumer))
+    if len(result) != len(operators):
+        raise ValueError("DOPS graph is not a DAG")
     return result
 
 
-def _experiment_cost(cfg):
-    graph, shape = build_graph(cfg)
-    cluster = demo_cluster(cfg)
-    _apply_runtime_config_overrides(cfg)
-    pim_fast = bool(cfg.get("pim_fast_mode", True))
-    cost = CostModel(cluster, dtype=cfg.get("dtype", "fp16"),
-                     npu_backend=cfg.get("npu_backend", "fast"),
-                     npu_lut_strict=bool(cfg.get("npu_lut_strict", False)),
-                     pim_config_path=Path(cfg["pim_config_path"]),
-                     ramulator_config_path=Path(cfg["ramulator_config_path"]),
-                     pim_trace_strict=bool(cfg.get("pim_trace_strict", False)),
-                     pim_fast_mode=pim_fast, pim_ramulator_timeout_s=1800)
-    if not pim_fast:
-        maximum = int(cfg["batch"]) * int(cfg["prefill_len"])
-        cost.set_model_dict(cost.get_or_make_pim_model_dict(
-            dim=shape.dim, n_heads=shape.n_heads, n_kv_heads=shape.n_kv_heads,
-            ffn_dim=shape.ffn_dim, seqlen=max(maximum, cfg["max_seq_len"])))
-    return graph, shape, cluster, cost
-
-
-def _parallel_expert_lut(config_path, phase, maximum, output):
-    families = ("ffn_w1", "ffn_w3", "swiglu", "ffn_w2")
-    base_cache = Path(os.environ["PIM_LATENCY_CACHE_FILE"])
-    workers = int(os.environ["SLURM_CPUS_PER_TASK"])
-    shards = min(maximum, max(1, workers // len(families)))
-    tasks = [(family, shard) for family in families for shard in range(shards)]
-
-    def measure(task):
-        family, shard = task
-        suffix = family + (f"_s{shard}" if shards > 1 else "")
-        family_cache = base_cache.with_name(f"{base_cache.stem}.{family}.pkl")
-        worker_cache = (base_cache.with_name(f"{base_cache.stem}.{family}.s{shard}.pkl")
-                        if shards > 1 else family_cache)
-        seed_cache = family_cache if family_cache.exists() else base_cache
-        if not worker_cache.exists() and seed_cache.exists():
-            shutil.copy2(seed_cache, worker_cache)
-        env = {**os.environ, "PIM_LATENCY_CACHE_FILE": str(worker_cache)}
-        log = output.parent / f"expert_{phase}_{suffix}.{os.environ['SLURM_JOB_ID']}.log"
-        with log.open("w") as handle:
-            subprocess.run([sys.executable, str(Path(__file__).resolve()),
-                            "--config", str(config_path), "--lut-phase", phase,
-                            "--lut-family", family, "--lut-shard", str(shard),
-                            "--lut-shards", str(shards)],
-                           env=env, stdout=handle, stderr=subprocess.STDOUT, check=True)
-        print(f"AIM_SHARD_OK {phase} {suffix} max_n_e={maximum}", flush=True)
-        return json.loads((output.parent / f"expert_lut_{phase}_{suffix}.json").read_text())
-
-    with ThreadPoolExecutor(max_workers=min(workers, len(tasks))) as pool:
-        parts = list(pool.map(measure, tasks))
-    operators = {}
-    for family in families:
-        selected = [part["operators"][family] for task, part in zip(tasks, parts) if task[0] == family]
-        if shards == 1:
-            operators[family] = selected[0]
-            continue
-        npu, pim = {}, {device: {} for device in DEVICES[1:]}
-        for part in selected:
-            npu.update({int(n): value for n, value in part["npu"].items()})
-            for device in pim:
-                pim[device].update({int(n): value for n, value in part["pim"][device].items()})
-        operators[family] = build_expert_service_lut(
-            max_tokens=maximum, activation_bytes_per_token=selected[0]["activation_bytes_per_token"],
-            npu_anchors={NPU: npu}, pim_measurements=pim)
-    _write(output, {**parts[0], "operators": operators, "raw_measurements": False,
-                    "shard": None, "shards": shards,
-                    "npu_anchor_origin": "DOPS ascend_310b_lut evaluation, including existing internal LUT interpolation"})
-    return operators
-
-
-def build_experiment_bundle(config_path: Path) -> Path:
-    cfg = json.loads(config_path.read_text())
-    fast_mode = cfg.get("npu_backend", "fast") == "fast" and cfg.get("pim_fast_mode", True)
-    if not fast_mode and os.environ.get("PIM_TRACE_SCALE_REPEATS") != "0":
-        raise RuntimeError("Set PIM_TRACE_SCALE_REPEATS=0 before importing DOPS")
-    output = config_path.parent
-    graph, shape, cluster, cost = _experiment_cost(cfg)
-    maximum = int(cfg["batch"]) * int(cfg["prefill_len"])
-    prior = json.loads(Path(cfg["hetinfer_prior_out"]).read_text())
-    manifest = json.loads(Path(cfg["hetinfer_network_out"]).read_text())
+def build_experiment_bundle(*, cfg, snapshots, graph, shape, cluster, cost):
+    """Preserve DOPS costs and TP communication, projecting whole-expert placement."""
+    if cfg.get("npu_backend", "fast") != "fast" or not cfg.get("pim_fast_mode", True):
+        raise ValueError("Het-Infer export requires fast mode on NPU and PIM")
     is_moe = cfg["model_family"] == "mixtral"
-    luts = {}
-    if is_moe:
-        for phase, limit in (("prefill", maximum), ("decode", int(cfg["batch"]))):
-            luts[phase] = _parallel_expert_lut(config_path, phase, limit,
-                                              output / f"expert_lut_{phase}.json")
+    luts = {phase: _expert_lut(cost, graph, phase, maximum)
+            for phase, maximum in (("prefill", int(cfg["batch"]) * int(cfg["prefill_len"])),
+                                   ("decode", int(cfg["batch"])))} if is_moe else {}
+    movements = [dict(route) for snapshot in snapshots for route in snapshot["routes"]]
+    move_keys = {tuple(row[key] for key in ("tensor_id", "source_device_id",
+                 "destination_device_id", "bytes", "layout")) for row in movements}
 
-    prior_ops = {op["op_id"]: op for op in prior["operators"]}
-    default = {op["op_id"]: op["device_id"] for op in prior["expert_placement"]}
-    service = {(item["op_id"], item["device_id"]): item["duration_s"]
-               for item in prior["t_service"]}
-    move_keys = {tuple(item[key] for key in ("tensor_id", "source_device_id",
-                                            "destination_device_id", "bytes", "layout"))
-                 for item in prior["legal_movement_routes"]}
-    route_context = SimpleNamespace(cost=cost, cluster=cluster)
-
-    def add_route(tensor: str, source: str, destination: str, size: int,
-                  layout: str, duration: float) -> None:
+    def add_route(tensor, source, destination, size, layout, duration):
         key = (tensor, source, destination, size, layout)
-        if key in move_keys:
-            return
-        move_keys.add(key)
-        item = dict(zip(("tensor_id", "source_device_id", "destination_device_id", "bytes", "layout"), key))
-        prior["legal_movement_routes"].append(item)
-        prior["t_move"].append({**item, "duration_s": duration})
+        if key not in move_keys:
+            move_keys.add(key)
+            movements.append(dict(tensor_id=tensor, source_device_id=source,
+                destination_device_id=destination, bytes=size, layout=layout, duration_s=duration))
 
-    weight_catalog = {}
-    metadata = {}
-    spec_layers = []
-    projections = []
-    for network_index, network in enumerate(manifest["networks"]):
-        phase = network["phase"]
-        work = network["workload"]
-        batch = work["batch"]
-        sequence = work["sequence_length"]
-        network_ids = {op["op_id"] for op in network["operators"]}
-        kv_homes = {(raw["layer_index"], raw["canonical_op_slot"].rsplit("_s", 1)[1]
-                     if "_s" in raw["canonical_op_slot"] else "0"): default[raw["op_id"]]
-                    for raw in network["operators"] if raw["op_role"] == "KV_WRITE"}
-        node_specs = []
-        for raw in network["operators"]:
-            op_id = raw["op_id"]
-            if raw["op_role"] == "KV_WRITE":
-                node = SimpleNamespace(name=raw["canonical_op_slot"], attrs={},
-                                       weight_id=None, weight_size=0)
-            else:
-                node = graph.nodes[op_id.split(":", 2)[2]]
-            family = node.name.lower()
-            expert = node.attrs.get("expert_id")
-            layer = raw["layer_index"]
-            supernode = f"{phase}:{network_index}:L{layer}:expert:{expert}" if expert else op_id
-            metadata[op_id] = {"family": family,
-                               "timing_source": node.attrs.get("timing_source", "dops_fast" if fast_mode else "npu_lut_or_aim"),
-                               "weight_id": node.weight_id}
+    weights, networks = {}, []
+    route_context = SimpleNamespace(cost=cost, cluster=cluster)
+    for index, snapshot in enumerate(snapshots):
+        phase = snapshot["phase"]
+        first = snapshot["operators"][0]["network_metadata"]
+        batch, sequence = int(first["batch"]), int(first["seq_len"])
+        past, query = (0, sequence) if phase == "prefill" else (sequence, 1)
+        inputs = defaultdict(list)
+        for entry in snapshot["inputs"]:
+            inputs[entry["consumer_op_id"]].append({k: v for k, v in entry.items() if k != "consumer_op_id"})
+        collectives = {row["op_id"]: dict(row) for row in snapshot["collective_contexts"]}
+        kv_homes = {}
+        for raw in snapshot["operators"]:
+            meta = raw["network_metadata"]
+            attrs = meta["node_attrs"]
+            slot = attrs["canonical_op_slot"]
+            shard = int(slot.rsplit("_s", 1)[1]) if "_s" in slot else 0
+            if _op_role(meta["name"], attrs) == "KV_WRITE":
+                kv_homes[(attrs.get("layer_index", attrs.get("layer")), shard)] = raw["expert_device"]
+        operators = []
+        for position, raw in enumerate(snapshot["operators"]):
+            op_id, meta = raw["op_id"], raw["network_metadata"]
+            attrs = meta["node_attrs"]
+            slot = attrs["canonical_op_slot"]
+            layer = attrs.get("layer_index", attrs.get("layer"))
+            shard = int(slot.rsplit("_s", 1)[1]) if "_s" in slot else 0
+            role = _op_role(meta["name"], attrs)
+            node = (SimpleNamespace(name=slot, attrs={}, weight_id=None, weight_size=0)
+                    if role == "KV_WRITE" else graph.nodes[op_id.split(":", 2)[2]])
+            family, expert = node.name.lower(), node.attrs.get("expert_id")
             if node.weight_size:
-                wid = str(node.weight_id)
-                size = int(node.weight_size)
+                wid, size = str(node.weight_id), int(node.weight_size)
                 load = {}
-                for device_id in prior_ops[op_id]["legal_devices"]:
+                for device_id in raw["legal_devices"]:
                     device = cluster.devices[device_id]
                     comm = float(cost.comm_cost(cluster.devices["CPU0"], device, size))
                     local = (float(cost.pim_local_weight_load_cost(size, "ND", dev=device).total_s)
-                             if device.type == "pim" else
-                             float(cost.npu_local_weight_load_cost(size, "ND",
-                                   cost.weight_resident_format("ND", device), dev=device).total_s))
+                             if device.type == "pim" else float(cost.npu_local_weight_load_cost(
+                                 size, "ND", cost.weight_resident_format("ND", device), dev=device).total_s))
                     load[device_id] = {"transfer_s": comm, "local_write_format_s": local,
                                        "total_s": comm + local}
                     add_route(f"weight:{wid}", "CPU0", device_id, size, "ND", comm + local)
-                weight_catalog[wid] = {"bytes": size, "load": load}
-                prior["inputs"].append({
-                    "consumer_op_id": op_id, "producer_op_id": None,
-                    "tensor_id": f"weight:{wid}", "semantics": "data", "bytes": size,
+                weights[wid] = {"bytes": size, "load": load}
+                inputs[op_id].append({"producer_op_id": None, "tensor_id": f"weight:{wid}",
+                    "semantics": "data", "bytes": size,
                     "source_residencies": [{"device_id": "CPU0", "layout": "ND"}],
-                    "destination_devices": list(prior_ops[op_id]["legal_devices"])})
-            node_specs.append({
-                "op_id": op_id, "layer_index": layer, "operator_index": raw["operator_index"],
-                "operator_family": family, "placement_supernode": supernode,
-                "parallel_group_hint": (f"{phase}:{network_index}:L{layer}:experts" if expert else None),
-                "weight_home": "CPU0" if node.weight_size else None,
-                "kv_home": (kv_homes[(layer, raw["canonical_op_slot"].rsplit("_s", 1)[1]
-                            if "_s" in raw["canonical_op_slot"] else "0")]
-                            if raw["canonical_op_slot"].split("_s", 1)[0]
-                            in {"k", "v", "qk", "sv", "k_write", "v_write"} else None),
-                "expert_id": expert,
-                "expert_service_buckets": luts[phase][family] if expert else [],
+                    "destination_devices": list(raw["legal_devices"])})
+            operators.append({
+                "op_id": op_id, "dependencies": list(raw["dependencies"]), "op_role": role,
+                "layer_index": layer, "operator_index": position, "operator_family": family,
+                "legal_devices": sorted(raw["legal_devices"]), "default_device": raw["expert_device"],
+                "native_device": raw["expert_device"],
+                "placement_supernode": f"{phase}:{index}:L{layer}:expert:{expert}" if expert else op_id,
+                "parallel_group_hint": f"{phase}:{index}:L{layer}:experts" if expert else None,
+                "weight_home": "CPU0" if node.weight_size else None, "weight_id": node.weight_id,
+                "kv_home": kv_homes[(layer, shard)] if slot.split("_s", 1)[0] in
+                           {"k", "v", "qk", "sv", "k_write", "v_write"} else None,
+                "kv_shard_index": shard, "expert_id": expert,
+                "service_s": dict(raw["service_s"]), "inputs": inputs[op_id],
+                "collective_context": collectives.get(op_id),
+                "timing_source": node.attrs.get("timing_source", "dops_fast"),
             })
-
-        # Native scheduling is per operator; contract the default to the same
-        # expert placement unit that Het-Infer is allowed to select.
-        groups = {}
-        for node in node_specs:
-            if node["expert_id"]:
-                groups.setdefault(node["placement_supernode"], []).append(node)
-        for group, members in groups.items():
-            legal = prior_ops[members[0]["op_id"]]["legal_devices"]
-            selected = min(legal, key=lambda dev: sum(service[(node["op_id"], dev)] for node in members))
-            for node in members:
-                op_id = node["op_id"]
-                if default[op_id] != selected:
-                    projections.append({"op_id": op_id, "native_device": default[op_id],
-                                        "supernode_device": selected})
-                default[op_id] = selected
-
-        by_spec = {node["op_id"]: node for node in node_specs}
-        roles = {raw["op_id"]: raw["op_role"] for raw in network["operators"]}
+        # Preserve the existing input order: it also fixes transfer submission order.
+        for op in operators:
+            for entry in op["inputs"]:
+                entry["source_residencies"] = sorted(entry["source_residencies"],
+                    key=lambda row: (row["device_id"], row["layout"]))
+                entry["destination_devices"] = sorted(entry["destination_devices"])
+            op["inputs"].sort(key=lambda entry: (entry["producer_op_id"] or "", entry["tensor_id"],
+                entry["semantics"], entry["bytes"],
+                tuple((r["device_id"], r["layout"]) for r in entry["source_residencies"]),
+                tuple(entry["destination_devices"])))
+            if op["collective_context"] is not None:
+                for field in ("participant_device_ids", "output_device_ids", "resource_device_ids"):
+                    op["collective_context"][field] = sorted(op["collective_context"][field])
+        groups = defaultdict(list)
+        by_id = {op["op_id"]: op for op in operators}
+        for op in operators:
+            if op["expert_id"]:
+                groups[op["placement_supernode"]].append(op)
+        for members in groups.values():
+            selected = min(members[0]["legal_devices"],
+                           key=lambda device: sum(op["service_s"][device] for op in members))
+            for op in members:
+                op["default_device"] = selected
         if is_moe:
-            for entry in list(prior["inputs"]):
-                producer, consumer = entry["producer_op_id"], entry["consumer_op_id"]
-                if consumer not in network_ids or producer not in network_ids:
-                    continue
-                expert_node = (consumer if roles[producer] == "ROUTER" and roles[consumer] == "EXPERT"
-                               else producer if roles[producer] == "EXPERT" and roles[consumer] == "COMBINE"
-                               else None)
-                if expert_node is None:
-                    continue
-                for bucket in by_spec[expert_node]["expert_service_buckets"]:
-                    size = bucket["activation_bytes"]
-                    for residency in entry["source_residencies"]:
-                        for destination in entry["destination_devices"]:
-                            duration = SchedulerBase._hetinfer_route_time_s(
-                                route_context, cluster.devices[residency["device_id"]],
-                                cluster.devices[destination], size, source_layout=residency["layout"])
-                            add_route(entry["tensor_id"], residency["device_id"], destination,
-                                      size, residency["layout"], duration)
-
-        reference = next(node for node in graph.nodes.values() if node.name.upper() == "FFN_W1")
-        reference = deepcopy(reference)
+            for consumer in operators:
+                for entry in consumer["inputs"]:
+                    producer = by_id.get(entry["producer_op_id"])
+                    if producer is None:
+                        continue
+                    expert_op = (consumer if producer["op_role"] == "ROUTER" and consumer["op_role"] == "EXPERT"
+                                 else producer if producer["op_role"] == "EXPERT" and consumer["op_role"] == "COMBINE"
+                                 else None)
+                    if expert_op is None:
+                        continue
+                    for bucket in luts[phase][expert_op["operator_family"]]:
+                        size = bucket["activation_bytes"]
+                        for source in entry["source_residencies"]:
+                            for destination in entry["destination_devices"]:
+                                duration = route_time_s(route_context,
+                                    cluster.devices[source["device_id"]], cluster.devices[destination],
+                                    size, source_layout=source["layout"])
+                                add_route(entry["tensor_id"], source["device_id"], destination,
+                                          size, source["layout"], duration)
+        reference = deepcopy(next(node for node in graph.nodes.values() if node.name.upper() == "FFN_W1"))
         reference.attrs["moe_token_fraction"] = 1.0
         flops = float(cost.estimate_flops(reference, batch, sequence, phase))
-        capabilities = {}
-        for domain, device_ids in (("NPU", (NPU,)), ("PIM", DEVICES[1:])):
-            capabilities[domain] = {
-                "effective_compute_flops_per_s": sum(flops / _service(cost, reference, cluster.devices[d], batch, sequence, phase) for d in device_ids),
-                "effective_bandwidth_bytes_per_s": sum(float(cluster.devices[d].mem_bw_GBs) * 1e9 for d in device_ids),
-                "queue_count": len(device_ids),
-            }
-        spec_layers.append({
-            "network_index": network_index, "layer_class": "moe" if is_moe else "dense",
-            "phase": phase, "batch_size": batch, "sequence_length": sequence,
-            "past_kv_len": work["past_kv_len"], "query_len": work["query_len"],
-            "router_top_k": 2 if is_moe else None, "sd_component": "none",
-            "shape_bucket": f"b{batch}-past{work['past_kv_len']}-q{work['query_len']}",
-            "capability_basis": "compute", "domain_capabilities": capabilities,
-            "default_order": _order(network["operators"]),
-            "nodes": [by_spec[op_id] for op_id in _order(network["operators"])],
-        })
-
-    for item in prior["expert_placement"]:
-        item["device_id"] = default[item["op_id"]]
-    spec = {"graph_id": prior["graph_id"], "workload_id": prior["workload_id"],
-            "device_domains": {NPU: "NPU", "PIM0": "PIM", "PIM1": "PIM"},
-            "layers": spec_layers}
-    prior_artifact = validate_prior_artifact(prior)
-    bindings_path = output / "experiment_tensor_bindings.json"
-    export_tensor_bindings_manifest_from_artifacts(
-        prior_artifact=prior, network_manifest=manifest, output=bindings_path)
-    bindings = json.loads(bindings_path.read_text())
-    bundle = output / "bundle"
-    export_camc_bundle(prior_artifact=prior_artifact, network_manifest=manifest,
-                       tensor_bindings=bindings, layer_spec=spec, output_dir=bundle)
-    _write(bundle / "experiment.json", {
+        capabilities = {domain: {
+            "effective_compute_flops_per_s": sum(flops / _service(cost, reference, cluster.devices[d],
+                                                  batch, sequence, phase) for d in devices),
+            "effective_bandwidth_bytes_per_s": sum(float(cluster.devices[d].mem_bw_GBs) * 1e9 for d in devices),
+            "queue_count": len(devices),
+        } for domain, devices in (("NPU", (NPU,)), ("PIM", DEVICES[1:]))}
+        order = _order(operators)
+        networks.append({"phase": phase, "batch_size": batch, "sequence_length": sequence,
+            "past_kv_len": past, "query_len": query, "layer_class": "moe" if is_moe else "dense",
+            "router_top_k": 2 if is_moe else None, "shape_bucket": f"b{batch}-past{past}-q{query}",
+            "default_order": order, "operators": [by_id[op_id] for op_id in order],
+            "capability_basis": "compute", "domain_capabilities": capabilities})
+    return {"graph_id": cfg["hetinfer_graph_id"], "workload_id": cfg["hetinfer_workload_id"],
+        "device_domains": {NPU: "NPU", "PIM0": "PIM", "PIM1": "PIM"},
         "model": cfg["model_family"], "layer_count": int(shape.layer_num),
         "batch": cfg["batch"], "prefill": cfg["prefill_len"], "decode_rounds": int(cfg["decode_len"]),
-        "weights": weight_catalog, "operators": metadata,
-        "weight_backing_store": "CPU0", "weight_capacity_ratio": 0.95,
-        "weight_capacity_bytes": {device: int(cluster.devices[device].mem_capacity_GB
-                                             * 1024 ** 3 * 0.95) for device in DEVICES},
-        "hardware_json": cfg["hardware_json"],
-        "timing_mode": "fast" if fast_mode else "aim_lut",
-        "npu_backend": cfg.get("npu_backend", "fast"),
-        "pim_fast_mode": cfg.get("pim_fast_mode", True),
-        "bifocal_preset": cfg.get("bifocal_preset"),
-        "bifocal_parameters": {name: getattr(runtime_config, name) for name in (
-            "SCHED_JOINT_LK_ENABLE", "SCHED_JOINT_LK_H", "SCHED_JOINT_LK_GAMMA",
-            "SCHED_JOINT_LK_CONSIST_LAMBDA", "SCHED_JOINT_LK_PLAN_HINT_MAX",
-            "SCHED_WEIGHT_BIAS_ETA", "SCHED_DECODE_AMORT_ENABLE",
-            "SCHED_DECODE_AMORT_ALPHA", "SCHED_DECODE_AMORT_RMIN",
-            "SCHED_DECODE_AMORT_REUSE_PROB")},
-        "scheduler_seed": cfg.get("scheduler_seed"),
-        "pim_trace_scale_repeats": None if fast_mode else 0,
-        "moe_control_timing": cfg.get("moe_control_timing"),
-        "default_placement_projection": projections,
-        "produced_tensor": False, "produced_token": False})
-    print(f"BUNDLE_OK {bundle}", flush=True)
-    return bundle
+        "weights": weights, "weight_capacity_bytes": {device: int(cluster.devices[device].mem_capacity_GB
+                                             * 1024 ** 3 * .95) for device in DEVICES},
+        "bifocal_parameters": {name: cfg.get(name, getattr(runtime_config, name)) for name in PARAMETERS},
+        "scheduler_seed": cfg["scheduler_seed"], "expert_service_buckets": luts,
+        "movements": movements, "networks": networks}
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=Path, nargs="+", required=True)
-    parser.add_argument("--lut-phase", choices=("prefill", "decode"))
-    parser.add_argument("--lut-family", choices=("ffn_w1", "ffn_w3", "swiglu", "ffn_w2"))
-    parser.add_argument("--lut-shard", type=int, default=0)
-    parser.add_argument("--lut-shards", type=int, default=1)
-    args = parser.parse_args()
-    if not os.environ.get("SLURM_JOB_ID"):
-        raise RuntimeError("Run the exporter on a Slurm compute node")
-    if (args.lut_phase is None) != (args.lut_family is None):
-        parser.error("--lut-phase and --lut-family must be supplied together")
-    if args.lut_phase:
-        if len(args.config) != 1:
-            parser.error("One config is required for a LUT worker")
-        cfg = json.loads(args.config[0].read_text())
-        graph, _, _, cost = _experiment_cost(cfg)
-        node = next(node for node in graph.nodes.values()
-                    if "expert" in node.attrs and node.name.lower() == args.lut_family)
-        maximum = int(cfg["batch"]) * (int(cfg["prefill_len"]) if args.lut_phase == "prefill" else 1)
-        suffix = args.lut_family + (f"_s{args.lut_shard}" if args.lut_shards > 1 else "")
-        _expert_lut(cost, {args.lut_family: node}, args.lut_phase, maximum,
-                    args.config[0].parent / f"expert_lut_{args.lut_phase}_{suffix}.json",
-                    args.lut_shard, args.lut_shards)
-    else:
-        for config in args.config:
-            build_experiment_bundle(config)
-
-
-if __name__ == "__main__":
-    main()
+def export_experiment_bundle(*, output, **kwargs):
+    payload = build_experiment_bundle(**kwargs)
+    path = Path(output)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n")
+    temporary.replace(path)
+    return path

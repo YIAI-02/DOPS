@@ -10,7 +10,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "commands"))
-from export_hetinfer_full_suite import _config
+from export_mixtral_hotcold_fast import _config
 
 CASES = {
     "W1": ("1.8b", 1, 16, 32),
@@ -35,7 +35,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     shape_file = ROOT / "configs" / f"qwen_{variant}_shape.json"
     layers = json.loads(shape_file.read_text())["layer_num"]
-    cfg = _config(dops_root=ROOT, het_infer_root=ROOT.parent / "v1-cama-work",
+    cfg = _config(dops_root=ROOT,
                   batch=batch, prefix_length=prefill,
                   workload=f"{args.case}-qwen{variant}-b{batch}-p{prefill}-h{horizon}")
     cfg.update({
@@ -49,9 +49,7 @@ def main():
         "decode_len": horizon, "max_seq_len": prefill + horizon,
         "result_dir": str(output / "native_run"),
         "simulation_log_file": str(output / "pim_simulation.log"),
-        "hetinfer_prior_out": str(output / "native" / "prior.json"),
-        "hetinfer_network_out": str(output / "native" / "network.json"),
-        "hetinfer_tensor_bindings_out": str(output / "native" / "tensor_bindings.json"),
+        "hetinfer_bundle_out": str(output / "bundle.json"),
         "npu_backend": "fast", "pim_fast_mode": True,
         "npu_lut_strict": False, "pim_trace_strict": False,
         "scheduler_seed": 7, "tp_qkv": 2, "tp_ffn": 2,
@@ -62,20 +60,14 @@ def main():
     })
     config = output / "config.json"
     config.write_text(json.dumps(cfg, indent=2) + "\n")
-    (output / "native").mkdir(exist_ok=True)
     with (output / f"native_export.{os.environ['SLURM_JOB_ID']}.log").open("w") as log:
         subprocess.run([sys.executable, str(ROOT / "src" / "main.py"),
             "evaluate", "--config", str(config)], cwd=ROOT,
             stdout=log, stderr=subprocess.STDOUT, check=True)
-    networks = json.loads(Path(cfg["hetinfer_network_out"]).read_text())["networks"]
-    if len(networks) != horizon + 1:
-        raise ValueError("Native export is incomplete")
-    subprocess.run([sys.executable, str(ROOT / "src" / "hetinfer_experiment_export.py"),
-                    "--config", str(config)], cwd=ROOT, check=True)
     (output / "bundle_source.json").write_text(json.dumps({
-        "case": args.case, "variant": variant, "bundle": str(output / "bundle"),
+        "case": args.case, "variant": variant, "bundle": str(output / "bundle.json"),
         "reused": False, "config": str(config)}, indent=2) + "\n")
-    print(f"DENSE_FAST_BUNDLE_OK {args.case} {output / 'bundle'}", flush=True)
+    print(f"DENSE_FAST_BUNDLE_OK {args.case} {output / 'bundle.json'}", flush=True)
 
 
 if __name__ == "__main__":

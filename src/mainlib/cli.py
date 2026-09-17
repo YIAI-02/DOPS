@@ -22,9 +22,7 @@ _OUTPUT_PATH_KEYS = {
     'dump_graph_dir',
     'all_passes_json',
     'best_summary_json',
-    'hetinfer_prior_out',
-    'hetinfer_network_out',
-    'hetinfer_tensor_bindings_out',
+    'hetinfer_bundle_out',
     'weight_format_json',
     'baseline_out',
     'serve_out',
@@ -77,24 +75,8 @@ def parse_args():
     sp_eval.add_argument('--tp_qkv', type=int, help='Tensor-parallel shard size for Q/K/V generation and attention head sharding.')
     sp_eval.add_argument('--tp_ffn', type=int, help='Tensor-parallel shard size for FFN intermediate dimension.')
     sp_eval.add_argument('--tp_moe', type=int, help='Expert-parallel shard size for MoE experts / Mixtral routing.')
-    sp_eval.add_argument(
-        '--hetinfer-prior-out',
-        dest='hetinfer_prior_out',
-        type=str,
-        help='Write a separate dops.hetinfer_prior.v1 artifact (Bifocal only). A directory gets an automatic filename.',
-    )
-    sp_eval.add_argument(
-        '--hetinfer-network-out',
-        dest='hetinfer_network_out',
-        type=str,
-        help='Write the companion dops.hetinfer_network.v1 manifest.',
-    )
-    sp_eval.add_argument(
-        '--hetinfer-tensor-bindings-out',
-        dest='hetinfer_tensor_bindings_out',
-        type=str,
-        help='Write the companion dops.hetinfer_tensor_bindings.v1 manifest.',
-    )
+    sp_eval.add_argument('--hetinfer-bundle-out', type=str,
+                         help='Write one fast-mode Het-Infer bundle JSON (Bifocal only).')
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats and fixed baseline experiments.')
     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
     sp_ws.add_argument('--debug', action='store_true', help='Enable verbose logging.')

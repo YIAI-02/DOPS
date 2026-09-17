@@ -1,0 +1,900 @@
+{
+  "status": "approved_preparing_preflight",
+  "fixed_hardware": "1 NPU + 2 PIM, 16 GiB each, 95% weight budget",
+  "batches": [
+    1,
+    2,
+    4,
+    8,
+    16
+  ],
+  "prefills": [
+    128,
+    512,
+    1024,
+    2048,
+    4096
+  ],
+  "decode_lengths": [
+    128,
+    512,
+    1024,
+    2048,
+    4096
+  ],
+  "token_capacity_limit_per_pim": 13107,
+  "seeds": [
+    1001,
+    1002,
+    1003,
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010
+  ],
+  "policies": [
+    "R0",
+    "R1",
+    "R2",
+    "R3",
+    "R4"
+  ],
+  "arms": {
+    "S0": "fixed DOPS",
+    "S1": "CAMC lambda=0",
+    "S2": "CAMC lambda=1"
+  },
+  "main_workloads": [
+    {
+      "batch": 1,
+      "prefill": 128,
+      "decode": 128,
+      "kv_bytes_per_pim": 16777216
+    },
+    {
+      "batch": 1,
+      "prefill": 128,
+      "decode": 512,
+      "kv_bytes_per_pim": 41943040
+    },
+    {
+      "batch": 1,
+      "prefill": 128,
+      "decode": 1024,
+      "kv_bytes_per_pim": 75497472
+    },
+    {
+      "batch": 1,
+      "prefill": 128,
+      "decode": 2048,
+      "kv_bytes_per_pim": 142606336
+    },
+    {
+      "batch": 1,
+      "prefill": 128,
+      "decode": 4096,
+      "kv_bytes_per_pim": 276824064
+    },
+    {
+      "batch": 1,
+      "prefill": 512,
+      "decode": 128,
+      "kv_bytes_per_pim": 41943040
+    },
+    {
+      "batch": 1,
+      "prefill": 512,
+      "decode": 512,
+      "kv_bytes_per_pim": 67108864
+    },
+    {
+      "batch": 1,
+      "prefill": 512,
+      "decode": 1024,
+      "kv_bytes_per_pim": 100663296
+    },
+    {
+      "batch": 1,
+      "prefill": 512,
+      "decode": 2048,
+      "kv_bytes_per_pim": 167772160
+    },
+    {
+      "batch": 1,
+      "prefill": 512,
+      "decode": 4096,
+      "kv_bytes_per_pim": 301989888
+    },
+    {
+      "batch": 1,
+      "prefill": 1024,
+      "decode": 128,
+      "kv_bytes_per_pim": 75497472
+    },
+    {
+      "batch": 1,
+      "prefill": 1024,
+      "decode": 512,
+      "kv_bytes_per_pim": 100663296
+    },
+    {
+      "batch": 1,
+      "prefill": 1024,
+      "decode": 1024,
+      "kv_bytes_per_pim": 134217728
+    },
+    {
+      "batch": 1,
+      "prefill": 1024,
+      "decode": 2048,
+      "kv_bytes_per_pim": 201326592
+    },
+    {
+      "batch": 1,
+      "prefill": 1024,
+      "decode": 4096,
+      "kv_bytes_per_pim": 335544320
+    },
+    {
+      "batch": 1,
+      "prefill": 2048,
+      "decode": 128,
+      "kv_bytes_per_pim": 142606336
+    },
+    {
+      "batch": 1,
+      "prefill": 2048,
+      "decode": 512,
+      "kv_bytes_per_pim": 167772160
+    },
+    {
+      "batch": 1,
+      "prefill": 2048,
+      "decode": 1024,
+      "kv_bytes_per_pim": 201326592
+    },
+    {
+      "batch": 1,
+      "prefill": 2048,
+      "decode": 2048,
+      "kv_bytes_per_pim": 268435456
+    },
+    {
+      "batch": 1,
+      "prefill": 2048,
+      "decode": 4096,
+      "kv_bytes_per_pim": 402653184
+    },
+    {
+      "batch": 1,
+      "prefill": 4096,
+      "decode": 128,
+      "kv_bytes_per_pim": 276824064
+    },
+    {
+      "batch": 1,
+      "prefill": 4096,
+      "decode": 512,
+      "kv_bytes_per_pim": 301989888
+    },
+    {
+      "batch": 1,
+      "prefill": 4096,
+      "decode": 1024,
+      "kv_bytes_per_pim": 335544320
+    },
+    {
+      "batch": 1,
+      "prefill": 4096,
+      "decode": 2048,
+      "kv_bytes_per_pim": 402653184
+    },
+    {
+      "batch": 1,
+      "prefill": 4096,
+      "decode": 4096,
+      "kv_bytes_per_pim": 536870912
+    },
+    {
+      "batch": 2,
+      "prefill": 128,
+      "decode": 128,
+      "kv_bytes_per_pim": 33554432
+    },
+    {
+      "batch": 2,
+      "prefill": 128,
+      "decode": 512,
+      "kv_bytes_per_pim": 83886080
+    },
+    {
+      "batch": 2,
+      "prefill": 128,
+      "decode": 1024,
+      "kv_bytes_per_pim": 150994944
+    },
+    {
+      "batch": 2,
+      "prefill": 128,
+      "decode": 2048,
+      "kv_bytes_per_pim": 285212672
+    },
+    {
+      "batch": 2,
+      "prefill": 128,
+      "decode": 4096,
+      "kv_bytes_per_pim": 553648128
+    },
+    {
+      "batch": 2,
+      "prefill": 512,
+      "decode": 128,
+      "kv_bytes_per_pim": 83886080
+    },
+    {
+      "batch": 2,
+      "prefill": 512,
+      "decode": 512,
+      "kv_bytes_per_pim": 134217728
+    },
+    {
+      "batch": 2,
+      "prefill": 512,
+      "decode": 1024,
+      "kv_bytes_per_pim": 201326592
+    },
+    {
+      "batch": 2,
+      "prefill": 512,
+      "decode": 2048,
+      "kv_bytes_per_pim": 335544320
+    },
+    {
+      "batch": 2,
+      "prefill": 512,
+      "decode": 4096,
+      "kv_bytes_per_pim": 603979776
+    },
+    {
+      "batch": 2,
+      "prefill": 1024,
+      "decode": 128,
+      "kv_bytes_per_pim": 150994944
+    },
+    {
+      "batch": 2,
+      "prefill": 1024,
+      "decode": 512,
+      "kv_bytes_per_pim": 201326592
+    },
+    {
+      "batch": 2,
+      "prefill": 1024,
+      "decode": 1024,
+      "kv_bytes_per_pim": 268435456
+    },
+    {
+      "batch": 2,
+      "prefill": 1024,
+      "decode": 2048,
+      "kv_bytes_per_pim": 402653184
+    },
+    {
+      "batch": 2,
+      "prefill": 1024,
+      "decode": 4096,
+      "kv_bytes_per_pim": 671088640
+    },
+    {
+      "batch": 2,
+      "prefill": 2048,
+      "decode": 128,
+      "kv_bytes_per_pim": 285212672
+    },
+    {
+      "batch": 2,
+      "prefill": 2048,
+      "decode": 512,
+      "kv_bytes_per_pim": 335544320
+    },
+    {
+      "batch": 2,
+      "prefill": 2048,
+      "decode": 1024,
+      "kv_bytes_per_pim": 402653184
+    },
+    {
+      "batch": 2,
+      "prefill": 2048,
+      "decode": 2048,
+      "kv_bytes_per_pim": 536870912
+    },
+    {
+      "batch": 2,
+      "prefill": 2048,
+      "decode": 4096,
+      "kv_bytes_per_pim": 805306368
+    },
+    {
+      "batch": 2,
+      "prefill": 4096,
+      "decode": 128,
+      "kv_bytes_per_pim": 553648128
+    },
+    {
+      "batch": 2,
+      "prefill": 4096,
+      "decode": 512,
+      "kv_bytes_per_pim": 603979776
+    },
+    {
+      "batch": 2,
+      "prefill": 4096,
+      "decode": 1024,
+      "kv_bytes_per_pim": 671088640
+    },
+    {
+      "batch": 2,
+      "prefill": 4096,
+      "decode": 2048,
+      "kv_bytes_per_pim": 805306368
+    },
+    {
+      "batch": 4,
+      "prefill": 128,
+      "decode": 128,
+      "kv_bytes_per_pim": 67108864
+    },
+    {
+      "batch": 4,
+      "prefill": 128,
+      "decode": 512,
+      "kv_bytes_per_pim": 167772160
+    },
+    {
+      "batch": 4,
+      "prefill": 128,
+      "decode": 1024,
+      "kv_bytes_per_pim": 301989888
+    },
+    {
+      "batch": 4,
+      "prefill": 128,
+      "decode": 2048,
+      "kv_bytes_per_pim": 570425344
+    },
+    {
+      "batch": 4,
+      "prefill": 512,
+      "decode": 128,
+      "kv_bytes_per_pim": 167772160
+    },
+    {
+      "batch": 4,
+      "prefill": 512,
+      "decode": 512,
+      "kv_bytes_per_pim": 268435456
+    },
+    {
+      "batch": 4,
+      "prefill": 512,
+      "decode": 1024,
+      "kv_bytes_per_pim": 402653184
+    },
+    {
+      "batch": 4,
+      "prefill": 512,
+      "decode": 2048,
+      "kv_bytes_per_pim": 671088640
+    },
+    {
+      "batch": 4,
+      "prefill": 1024,
+      "decode": 128,
+      "kv_bytes_per_pim": 301989888
+    },
+    {
+      "batch": 4,
+      "prefill": 1024,
+      "decode": 512,
+      "kv_bytes_per_pim": 402653184
+    },
+    {
+      "batch": 4,
+      "prefill": 1024,
+      "decode": 1024,
+      "kv_bytes_per_pim": 536870912
+    },
+    {
+      "batch": 4,
+      "prefill": 1024,
+      "decode": 2048,
+      "kv_bytes_per_pim": 805306368
+    },
+    {
+      "batch": 4,
+      "prefill": 2048,
+      "decode": 128,
+      "kv_bytes_per_pim": 570425344
+    },
+    {
+      "batch": 4,
+      "prefill": 2048,
+      "decode": 512,
+      "kv_bytes_per_pim": 671088640
+    },
+    {
+      "batch": 4,
+      "prefill": 2048,
+      "decode": 1024,
+      "kv_bytes_per_pim": 805306368
+    },
+    {
+      "batch": 8,
+      "prefill": 128,
+      "decode": 128,
+      "kv_bytes_per_pim": 134217728
+    },
+    {
+      "batch": 8,
+      "prefill": 128,
+      "decode": 512,
+      "kv_bytes_per_pim": 335544320
+    },
+    {
+      "batch": 8,
+      "prefill": 128,
+      "decode": 1024,
+      "kv_bytes_per_pim": 603979776
+    },
+    {
+      "batch": 8,
+      "prefill": 512,
+      "decode": 128,
+      "kv_bytes_per_pim": 335544320
+    },
+    {
+      "batch": 8,
+      "prefill": 512,
+      "decode": 512,
+      "kv_bytes_per_pim": 536870912
+    },
+    {
+      "batch": 8,
+      "prefill": 512,
+      "decode": 1024,
+      "kv_bytes_per_pim": 805306368
+    },
+    {
+      "batch": 8,
+      "prefill": 1024,
+      "decode": 128,
+      "kv_bytes_per_pim": 603979776
+    },
+    {
+      "batch": 8,
+      "prefill": 1024,
+      "decode": 512,
+      "kv_bytes_per_pim": 805306368
+    },
+    {
+      "batch": 16,
+      "prefill": 128,
+      "decode": 128,
+      "kv_bytes_per_pim": 268435456
+    },
+    {
+      "batch": 16,
+      "prefill": 128,
+      "decode": 512,
+      "kv_bytes_per_pim": 671088640
+    },
+    {
+      "batch": 16,
+      "prefill": 512,
+      "decode": 128,
+      "kv_bytes_per_pim": 671088640
+    }
+  ],
+  "capacity_excluded": [
+    {
+      "batch": 2,
+      "prefill": 4096,
+      "decode": 4096,
+      "kv_bytes_per_pim": 1073741824,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 128,
+      "decode": 4096,
+      "kv_bytes_per_pim": 1107296256,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 512,
+      "decode": 4096,
+      "kv_bytes_per_pim": 1207959552,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 1024,
+      "decode": 4096,
+      "kv_bytes_per_pim": 1342177280,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 2048,
+      "decode": 2048,
+      "kv_bytes_per_pim": 1073741824,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 2048,
+      "decode": 4096,
+      "kv_bytes_per_pim": 1610612736,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 4096,
+      "decode": 128,
+      "kv_bytes_per_pim": 1107296256,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 4096,
+      "decode": 512,
+      "kv_bytes_per_pim": 1207959552,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 4096,
+      "decode": 1024,
+      "kv_bytes_per_pim": 1342177280,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 4096,
+      "decode": 2048,
+      "kv_bytes_per_pim": 1610612736,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 4,
+      "prefill": 4096,
+      "decode": 4096,
+      "kv_bytes_per_pim": 2147483648,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 128,
+      "decode": 2048,
+      "kv_bytes_per_pim": 1140850688,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 128,
+      "decode": 4096,
+      "kv_bytes_per_pim": 2214592512,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 512,
+      "decode": 2048,
+      "kv_bytes_per_pim": 1342177280,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 512,
+      "decode": 4096,
+      "kv_bytes_per_pim": 2415919104,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 1024,
+      "decode": 1024,
+      "kv_bytes_per_pim": 1073741824,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 1024,
+      "decode": 2048,
+      "kv_bytes_per_pim": 1610612736,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 1024,
+      "decode": 4096,
+      "kv_bytes_per_pim": 2684354560,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 2048,
+      "decode": 128,
+      "kv_bytes_per_pim": 1140850688,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 2048,
+      "decode": 512,
+      "kv_bytes_per_pim": 1342177280,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 2048,
+      "decode": 1024,
+      "kv_bytes_per_pim": 1610612736,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 2048,
+      "decode": 2048,
+      "kv_bytes_per_pim": 2147483648,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 2048,
+      "decode": 4096,
+      "kv_bytes_per_pim": 3221225472,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 4096,
+      "decode": 128,
+      "kv_bytes_per_pim": 2214592512,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 4096,
+      "decode": 512,
+      "kv_bytes_per_pim": 2415919104,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 4096,
+      "decode": 1024,
+      "kv_bytes_per_pim": 2684354560,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 4096,
+      "decode": 2048,
+      "kv_bytes_per_pim": 3221225472,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 8,
+      "prefill": 4096,
+      "decode": 4096,
+      "kv_bytes_per_pim": 4294967296,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 128,
+      "decode": 1024,
+      "kv_bytes_per_pim": 1207959552,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 128,
+      "decode": 2048,
+      "kv_bytes_per_pim": 2281701376,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 128,
+      "decode": 4096,
+      "kv_bytes_per_pim": 4429185024,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 512,
+      "decode": 512,
+      "kv_bytes_per_pim": 1073741824,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 512,
+      "decode": 1024,
+      "kv_bytes_per_pim": 1610612736,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 512,
+      "decode": 2048,
+      "kv_bytes_per_pim": 2684354560,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 512,
+      "decode": 4096,
+      "kv_bytes_per_pim": 4831838208,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 1024,
+      "decode": 128,
+      "kv_bytes_per_pim": 1207959552,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 1024,
+      "decode": 512,
+      "kv_bytes_per_pim": 1610612736,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 1024,
+      "decode": 1024,
+      "kv_bytes_per_pim": 2147483648,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 1024,
+      "decode": 2048,
+      "kv_bytes_per_pim": 3221225472,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 1024,
+      "decode": 4096,
+      "kv_bytes_per_pim": 5368709120,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 2048,
+      "decode": 128,
+      "kv_bytes_per_pim": 2281701376,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 2048,
+      "decode": 512,
+      "kv_bytes_per_pim": 2684354560,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 2048,
+      "decode": 1024,
+      "kv_bytes_per_pim": 3221225472,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 2048,
+      "decode": 2048,
+      "kv_bytes_per_pim": 4294967296,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 2048,
+      "decode": 4096,
+      "kv_bytes_per_pim": 6442450944,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 4096,
+      "decode": 128,
+      "kv_bytes_per_pim": 4429185024,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 4096,
+      "decode": 512,
+      "kv_bytes_per_pim": 4831838208,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 4096,
+      "decode": 1024,
+      "kv_bytes_per_pim": 5368709120,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 4096,
+      "decode": 2048,
+      "kv_bytes_per_pim": 6442450944,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    },
+    {
+      "batch": 16,
+      "prefill": 4096,
+      "decode": 4096,
+      "kv_bytes_per_pim": 8589934592,
+      "reason": "weight budget plus KV exceeds 16 GiB on each PIM"
+    }
+  ],
+  "main_replays": 45000,
+  "heat_replays": 0,
+  "total_replays": 45000,
+  "bundle_count": 75,
+  "route_count": 3000,
+  "preflight_workloads": [
+    {
+      "batch": 16,
+      "prefill": 128,
+      "decode": 512
+    },
+    {
+      "batch": 1,
+      "prefill": 4096,
+      "decode": 128
+    },
+    {
+      "batch": 1,
+      "prefill": 128,
+      "decode": 4096
+    },
+    {
+      "batch": 2,
+      "prefill": 2048,
+      "decode": 4096
+    },
+    {
+      "batch": 1,
+      "prefill": 4096,
+      "decode": 4096
+    }
+  ],
+  "new_export_count": 75,
+  "reusable_pilot_bundle_count": 0,
+  "export_network_count": 91595,
+  "main_hot_shares": [
+    0.5,
+    0.65,
+    0.8,
+    0.95
+  ],
+  "preflight_hot_shares": [
+    0.5,
+    0.95
+  ],
+  "approved_at_beijing": "2026-09-17T19:35:32+08:00"
+}

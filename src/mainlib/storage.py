@@ -78,38 +78,6 @@ ALL_PASSES_RESULT_PATH = "./output/all_passes.json"
 BEST_PASS_SUMMARY_PATH = "./output/best_summary.json"
 
 
-def _resolve_hetinfer_prior_output(raw: str | None, *, result_dir: str, tag: str) -> Path | None:
-    """Resolve an explicit prior output as either a JSON file or a directory."""
-    if raw in (None, ""):
-        return None
-    path = Path(str(raw))
-    if path.suffix.lower() == ".json":
-        return path
-    return path / f"dops_hetinfer_prior_{tag}.json"
-
-
-def _resolve_hetinfer_network_output(raw: str | None, *, tag: str) -> Path | None:
-    """Resolve a companion network output as either a JSON file or directory."""
-    if raw in (None, ""):
-        return None
-    path = Path(str(raw))
-    if path.suffix.lower() == ".json":
-        return path
-    return path / f"dops_hetinfer_network_{tag}.json"
-
-
-def _resolve_hetinfer_tensor_bindings_output(
-    raw: str | None, *, tag: str
-) -> Path | None:
-    """Resolve tensor bindings output as either a JSON file or a directory."""
-    if raw in (None, ""):
-        return None
-    path = Path(str(raw))
-    if path.suffix.lower() == ".json":
-        return path
-    return path / f"dops_hetinfer_tensor_bindings_{tag}.json"
-
-
 def _best_summary_config_snapshot(cfg: Dict[str, Any] | None) -> Dict[str, Any]:
     """Keep graph-building and hardware identity inputs in legacy summaries."""
     source = dict(cfg or {})

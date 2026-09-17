@@ -1,6 +1,6 @@
 {
   "experiment_label": "hetinfer_native_1npu2pim_qwen_1layer_b1_s8_d1",
-  "evidence_class": "DOPS Ascend LUT plus CENT/AiM trace and Ramulator2",
+  "evidence_class": "DOPS analytical fast timing",
   "model_family": "qwen",
   "model_variant": "1.8b",
   "model_revision": "shape-only:qwen_1.8b_shape.json;layer_num=1",
@@ -21,22 +21,22 @@
   "pim_ramulator_timeout_s": 300,
   "result_dir": "../../output/hetinfer_native/qwen1layer_b1_s8_d1_1npu2aim",
   "hardware_json": "../../src/examples/hardware_1npu_2aim.json",
-  "hetinfer_prior_out": "../../output/hetinfer_native/qwen1layer_b1_s8_d1_1npu2aim/dops_hetinfer_prior.json",
-  "hetinfer_network_out": "../../output/hetinfer_native/qwen1layer_b1_s8_d1_1npu2aim/dops_hetinfer_network.json",
-  "hetinfer_tensor_bindings_out": "../../output/hetinfer_native/qwen1layer_b1_s8_d1_1npu2aim/dops_hetinfer_tensor_bindings.json",
-  "algo": ["Bifocal"],
+  "algo": [
+    "Bifocal"
+  ],
   "baselines": [],
   "tp_qkv": 1,
   "tp_ffn": 1,
   "tp_moe": 1,
   "pp": 1,
   "ep": 1,
-  "npu_backend": "lut",
-  "npu_lut_strict": true,
-  "pim_fast_mode": false,
-  "pim_trace_strict": true,
+  "npu_backend": "fast",
+  "npu_lut_strict": false,
+  "pim_fast_mode": true,
+  "pim_trace_strict": false,
   "scheduler_seed": 0,
   "dump_graph": false,
   "pim_weight_load_overlap_ratio": 0.0,
-  "weight_load_compute_overlap_ratio": 0.0
+  "weight_load_compute_overlap_ratio": 0.0,
+  "hetinfer_bundle_out": "../../output/hetinfer_native/qwen1layer_b1_s8_d1_1npu2aim/bundle.json"
 }

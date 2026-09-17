@@ -449,14 +449,8 @@ def _estimate_total_time_for_label(
         # Fallback: baseline HEFT if an unknown strategy name is supplied.
         sched = _make_scheduler("HEFT", cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
 
-    if (
-        cfg.get('hetinfer_prior_out') not in (None, '')
-        or cfg.get('hetinfer_network_out') not in (None, '')
-        or cfg.get('hetinfer_tensor_bindings_out') not in (None, '')
-    ):
-        enable_capture = getattr(sched, 'enable_hetinfer_prior_capture', None)
-        if callable(enable_capture):
-            enable_capture(True)
+    if cfg.get('hetinfer_bundle_out'):
+        sched.enable_hetinfer_prior_capture(True)
 
     try:
         sched.reset_state()

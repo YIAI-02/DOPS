@@ -22,7 +22,7 @@ DOPS is a simulation and analysis framework for studying decoder-only LLM infere
 
 ---
 
-## Het-Infer fast defaults (2026-09-10)
+## Het-Infer fast workflow (2026-09-16)
 
 The evaluate CLI defaults to the analytical NPU fast backend when no backend is specified. PIM fast mode follows this default unless explicitly overridden.
 The current Dense export command always selects both fast backends and Bifocal C026; it does not use AIM executables or NPU LUTs.
@@ -30,9 +30,10 @@ The current Dense export command always selects both fast backends and Bifocal C
 - HPC checkout: /lustre/home/2501111916/workspace/Het-Infer/dops-camc-work
 - Branch: integration/hetinfer-prior-camc-v1
 - Export: sbatch commands/run_dense_calibration_export.slurm --case W1 (Qwen 1.8B), W5 (7B), or W8 (14B).
-- Output: output/dense_fast_c026/CASE/bundle; config.json in the parent directory records all run settings.
+- Output: output/dense_fast_c026/CASE/bundle.json; config.json in the parent directory records all run settings.
 - W1–W7 preserve the previous workload shapes; W8 adds Qwen 14B with 40 layers, B1/P16/H32.
-- Historical output/dense_calibration_suite remains separate. The older full-suite and Tiny-MoE exporters retain their explicitly selected legacy backends; they are not the default Dense workflow.
+- DOPS writes one `bundle.json` directly from completed schedules; the old multi-file exporters have been removed. See [the input contract](docs/HETINFER_BUNDLE.md).
+- The scan uses the sibling `het-infer` checkout locally. Set `HET_INFER_ROOT` for a different deployment; the Slurm entrypoints set it to the existing HPC checkout.
 
 C026 is shared across all three models: joint lookahead enabled, H=2, gamma=0.4, consistency lambda=0.5, plan hint max=3, weight bias eta=0.5, decode amort enabled with alpha=1, rmin=1, reuse probability=1.
 The Dense command also sets scheduler seed=7, TP QKV/FFN=2/2, host/ND weights, load/compute overlap=1, PIM weight overlap=0.5, and decode sample/refresh stride=2/2.

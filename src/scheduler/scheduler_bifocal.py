@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 from .scheduler_common import *
 from .scheduler_types import _GraphIndex, ScheduledTask
 from .scheduler_heft import HEFTScheduler
@@ -15,11 +16,18 @@ class BifocalScheduler(HEFTScheduler):
         seq_len: int, 
         buffer: GlobalMemoryManager, 
         *, 
-        rand_seed: int | None = None):
+        rand_seed: int | None = None, cfg: Mapping[str, Any] | None = None):
         super().__init__(cluster, cost, label, batch, seq_len, buffer)
+        cfg = {} if cfg is None else cfg
+        self.sched_joint_lk_enable = cfg.get("SCHED_JOINT_LK_ENABLE", SCHED_JOINT_LK_ENABLE)
+        self.sched_joint_lk_h = cfg.get("SCHED_JOINT_LK_H", SCHED_JOINT_LK_H)
+        self.sched_joint_lk_gamma = cfg.get("SCHED_JOINT_LK_GAMMA", SCHED_JOINT_LK_GAMMA)
+        self.sched_joint_lk_consist_lambda = cfg.get("SCHED_JOINT_LK_CONSIST_LAMBDA", SCHED_JOINT_LK_CONSIST_LAMBDA)
+        self.sched_joint_lk_plan_hint_max = cfg.get("SCHED_JOINT_LK_PLAN_HINT_MAX", SCHED_JOINT_LK_PLAN_HINT_MAX)
+        self.sched_weight_bias_eta = cfg.get("SCHED_WEIGHT_BIAS_ETA", SCHED_WEIGHT_BIAS_ETA)
 
         # Near-future plan hints used by the lookahead consistency penalty.
-        # the oldest hints when exceeding SCHED_JOINT_LK_PLAN_HINT_MAX.
+        # Drop the oldest hints when exceeding the configured limit.
         self._plan_hint: Dict[str, str] = {}
         self._rng = random.Random(rand_seed)
         self._weight_plan_hint: Dict[str, str] = {}
@@ -29,6 +37,14 @@ class BifocalScheduler(HEFTScheduler):
         self._decode_total_tokens: Optional[int] = None
         self._decode_cfg_map: Dict[str, Any] = {}
         self._decode_amort_eval_cache: Dict[Tuple[str, str, str, int, int, int], float] = {}
+        if cfg.get("experiment_label") == "mixtral_hotcold_fast_20260911":
+            print("BIFOCAL_EFFECTIVE " + json.dumps({
+                "SCHED_JOINT_LK_H": self.sched_joint_lk_h,
+                "SCHED_JOINT_LK_GAMMA": self.sched_joint_lk_gamma,
+                "SCHED_JOINT_LK_CONSIST_LAMBDA": self.sched_joint_lk_consist_lambda,
+                "SCHED_JOINT_LK_PLAN_HINT_MAX": self.sched_joint_lk_plan_hint_max,
+                "SCHED_WEIGHT_BIAS_ETA": self.sched_weight_bias_eta,
+            }, sort_keys=True), flush=True)
 
     def reset_state(self, *, clear_caches: bool = True) -> None:
         """Reset runtime state and clear Bifocal lookahead hints."""
@@ -67,6 +83,12 @@ class BifocalScheduler(HEFTScheduler):
             if new_cfg != self._decode_cfg_map:
                 changed = True
             self._decode_cfg_map = new_cfg
+            if cfg.get("experiment_label") == "mixtral_hotcold_fast_20260911" and nxt_cur == 0:
+                print("BIFOCAL_DECODE_EFFECTIVE " + json.dumps({
+                    name: self._decode_cfg_value(name) for name in (
+                        "SCHED_DECODE_AMORT_ENABLE", "SCHED_DECODE_AMORT_ALPHA",
+                        "SCHED_DECODE_AMORT_RMIN", "SCHED_DECODE_AMORT_REUSE_PROB")
+                }, sort_keys=True), flush=True)
         if changed:
             try:
                 self._decode_amort_eval_cache.clear()
@@ -613,7 +635,7 @@ class BifocalScheduler(HEFTScheduler):
         # Consistency penalty: discourage oscillation in overlapping windows.
         penalty = 0.0
         if apply_consistency_penalty and self._plan_hint and len(chain) > 1:
-            lam = float(SCHED_JOINT_LK_CONSIST_LAMBDA)
+            lam = float(self.sched_joint_lk_consist_lambda)
             if lam > 0:
                 for nid, dev in zip(chain[1:], devs[1:]):
                     hinted = self._plan_hint.get(nid)
@@ -772,7 +794,7 @@ class BifocalScheduler(HEFTScheduler):
         penalty = 0.0
         hinted_type = self._weight_plan_hint.get(wid)
         if hinted_type is not None and str(hinted_type) != str(getattr(dev, "type", "")):
-            lam = float(SCHED_JOINT_LK_CONSIST_LAMBDA) if SCHED_JOINT_LK_CONSIST_LAMBDA is not None else 1.0
+            lam = float(self.sched_joint_lk_consist_lambda) if self.sched_joint_lk_consist_lambda is not None else 1.0
             t_reload = float(self._estimate_weight_reload_time(
                 node,
                 dev,
@@ -789,7 +811,7 @@ class BifocalScheduler(HEFTScheduler):
         if phase_l == "prefill":
             total_w = int(self._get_total_model_weight_bytes(g))
             if total_w > 0 and self._device_can_hold_all_weights(dev, total_w):
-                eta = float(SCHED_WEIGHT_BIAS_ETA) if SCHED_WEIGHT_BIAS_ETA is not None else 1.0
+                eta = float(self.sched_weight_bias_eta) if self.sched_weight_bias_eta is not None else 1.0
                 t_reload = float(self._estimate_weight_reload_time(
                     node,
                     dev,
@@ -895,7 +917,7 @@ class BifocalScheduler(HEFTScheduler):
 
     def _update_plan_hints(self, assignments: Mapping[str, str], scheduled: set[str]) -> None:
         """Update bounded plan-hint mapping σ'(·) for near-future nodes."""
-        max_keep = int(SCHED_JOINT_LK_PLAN_HINT_MAX) if SCHED_JOINT_LK_PLAN_HINT_MAX is not None else 0
+        max_keep = int(self.sched_joint_lk_plan_hint_max) if self.sched_joint_lk_plan_hint_max is not None else 0
         if max_keep <= 0:
             return
 
@@ -956,9 +978,9 @@ class BifocalScheduler(HEFTScheduler):
         scheduled: set[str] = set()
 
         # Config knobs (match paper notations).
-        H = int(SCHED_JOINT_LK_H)
-        gamma = float(SCHED_JOINT_LK_GAMMA)
-        use_lookahead = bool(SCHED_JOINT_LK_ENABLE) and H > 1 and gamma > 0.0
+        H = int(self.sched_joint_lk_h)
+        gamma = float(self.sched_joint_lk_gamma)
+        use_lookahead = bool(self.sched_joint_lk_enable) and H > 1 and gamma > 0.0
 
         # Multi-device selection: when there are multiple executors, don't rely on rank ordering.
         # Instead, pick from the whole READY set by the lookahead chain score.
@@ -1151,6 +1173,7 @@ class BifocalScheduler(HEFTScheduler):
             g,
             phase,
             schedule_call_index=capture_call_index,
+            scheduled_order=self.export_fixed_plan(schedule)["order"],
         )
         return schedule
 

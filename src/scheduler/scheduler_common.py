@@ -18,7 +18,6 @@ from hardware import Cluster, DeviceSpec
 from task_graph import TaskGraph, TaskNode, JointTaskGraph, JointNodeMeta
 from cost_model import CostModel
 from cost_model import _normalize_weight_format_token as _cm_normalize_weight_format_token
-from cost_model import _resolve_npu_weight_conversion_steps as _cm_resolve_npu_weight_conversion_steps
 from buffer_manager import GlobalMemoryManager, LRUCache
 from config import (
     RANKU_INCLUDE_AVG_WEIGHT_LOAD,
@@ -73,33 +72,3 @@ def _sched_normalize_weight_format_token(fmt: str, *, allow_compute: bool = Fals
     if s not in ok:
         raise ValueError(f'Unsupported weight format token: {fmt}')
     return s
-
-
-def _sched_resolve_npu_weight_conversion_steps(src_fmt: str, dst_fmt: str) -> List[Tuple[str, str]]:
-    if _cm_resolve_npu_weight_conversion_steps is not None:
-        return _cm_resolve_npu_weight_conversion_steps(src_fmt, dst_fmt)
-    src = _sched_normalize_weight_format_token(src_fmt, allow_compute=True)
-    dst = _sched_normalize_weight_format_token(dst_fmt, allow_compute=True)
-    if src == 'DUAL':
-        src = 'NZ'
-    if src == dst:
-        return []
-    if src == 'ND':
-        if dst == 'NZ':
-            return [('ND', 'NZ')]
-        if dst in ('ZN', 'ZZ'):
-            return [('ND', 'NZ'), ('NZ', dst)]
-    if src == 'NZ':
-        if dst in ('ZN', 'ZZ'):
-            return [('NZ', dst)]
-        if dst == 'ND':
-            return [('NZ', 'ND')]
-    if src == 'PIM-OPT':
-        if dst == 'ND':
-            return [('PIM-OPT', 'ND')]
-        if dst == 'NZ':
-            return [('PIM-OPT', 'ND'), ('ND', 'NZ')]
-        if dst in ('ZN', 'ZZ'):
-            return [('PIM-OPT', 'ND'), ('ND', 'NZ'), ('NZ', dst)]
-    raise ValueError(f'Unsupported NPU weight conversion path: {src}->{dst}')
-

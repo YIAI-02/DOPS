@@ -169,6 +169,7 @@ def _make_scheduler(
     buffer: GlobalMemoryManager,
     *,
     rand_seed: int | None = None,
+    cfg: Dict | None = None,
 ):
     """Factory for scheduler strategies used by evaluate-suite."""
 
@@ -188,6 +189,7 @@ def _make_scheduler(
             seq_len=seq_len,
             buffer=buffer,
             rand_seed=seed,
+            cfg=cfg,
         )
 
     if strategy == 'HEFT':

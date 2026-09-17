@@ -13,6 +13,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from cost_model import CostModel  # noqa: E402
+from hetinfer_capture import _edge_tensor_id, compute_service_s, route_time_s
 from hardware import Cluster, DeviceSpec, LinkSpec  # noqa: E402
 import mainlib.kv_policy as kv_policy_module  # noqa: E402
 import scheduler.scheduler_bifocal as bifocal_module  # noqa: E402
@@ -585,8 +586,8 @@ class HetInferSchedulerExportTests(unittest.TestCase):
         self.assertNotEqual(graph.nodes["left"].bytes_read, 32_768)
         self.assertNotEqual(graph.nodes["right"].bytes_read, 32_768)
         self.assertEqual(
-            scheduler._hetinfer_edge_tensor_id(graph, "source", "left", "prefill", 1),
-            scheduler._hetinfer_edge_tensor_id(graph, "source", "right", "prefill", 1),
+            _edge_tensor_id(scheduler, graph, "source", "left", "prefill", 1),
+            _edge_tensor_id(scheduler, graph, "source", "right", "prefill", 1),
         )
         self.assertEqual(
             {
@@ -1138,7 +1139,7 @@ class HetInferSchedulerExportTests(unittest.TestCase):
             graph.nodes["k_write"], 2, 3, "prefill"
         )
         self.assertEqual(actual_write_bytes, expected_write_bytes)
-        actual_kv_service = scheduler._hetinfer_compute_service_s(
+        actual_kv_service = compute_service_s(scheduler, 
             graph, "k_write", cpu, "prefill"
         )
         # The production host-KV execution path represents predecessor->host
@@ -1147,7 +1148,7 @@ class HetInferSchedulerExportTests(unittest.TestCase):
         self.assertEqual(actual_kv_service, 0.0)
         with mock.patch.object(cost, "pim_write_time", return_value=0.007) as pim_write:
             self.assertEqual(
-                scheduler._hetinfer_compute_service_s(
+                compute_service_s(scheduler, 
                     graph, "k_write", pim, "prefill"
                 ),
                 0.007,
@@ -1176,7 +1177,7 @@ class HetInferSchedulerExportTests(unittest.TestCase):
         self.assertAlmostEqual(
             cost.comm_cost(cpu, npu, bytes_amount), expected_route, places=18
         )
-        actual_route = scheduler._hetinfer_route_time_s(
+        actual_route = route_time_s(scheduler, 
             cpu, npu, bytes_amount, source_layout="ND"
         )
         self.assertAlmostEqual(actual_route, expected_route, places=18)

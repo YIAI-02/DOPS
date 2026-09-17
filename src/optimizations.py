@@ -387,13 +387,6 @@ def _merge_overrides(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str
     return out
 
 
-def _effective_phase_density(spec: ActivationSparsitySpec, phase: str) -> float:
-    p = _lower(phase, "")
-    if spec.density_by_phase and p in spec.density_by_phase:
-        return _clamp01(spec.density_by_phase[p], spec.density_default())
-    return spec.density_default()
-
-
 def apply_optimizations_to_graph(
     g: TaskGraph,
     cfg: Dict[str, Any],
